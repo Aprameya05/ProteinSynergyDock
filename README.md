@@ -1,72 +1,97 @@
 # ProteinSynergyDock
 
-**Structure-aware drug combination synergy prediction via co-docking GNN with GO function context**
+> Predict whether two cancer drugs will work better together — using real molecular docking, protein function annotation, and cancer cell line context.
 
-[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://python.org)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-red.svg)](https://pytorch.org)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+**Live demo →** [proteinsydock.streamlit.app](https://aprameya05-proteinsynergydock-app.streamlit.app)
 
-## Overview
+---
 
-ProteinSynergyDock is the first model to predict drug combination synergy using:
-- **Real 3D molecular docking** (AutoDock Vina) of both drugs against their target protein
-- **GO function context** from ProteinWhisper++ (ontology-aware protein function encoder)
-- **Cross-drug attention** to model geometric complementarity between two drugs in the same binding pocket
+![Docking visualization](demo.png)
+*Vemurafenib (cyan) and Trametinib (orange) docked inside BRAF kinase (PDB: 3OG7). FDA-approved combination for BRAF V600E melanoma.*
+
+---
+
+## The problem
+
+Most drug synergy prediction tools take two SMILES strings and output a score based purely on chemistry. They never ask: *where does the drug sit inside the protein?* or *what does the protein actually do?* or *does this combination behave differently in breast cancer vs leukemia?*
+
+ProteinSynergyDock combines all three — 3D docking geometry, protein biological function, and cancer cell line identity — into a single prediction pipeline.
+
+---
+
+## How it works
+
+**You give it:** Drug A SMILES · Drug B SMILES · PDB ID · Cancer cell line
+
+**It does automatically:**
+
+1. Fetches the protein crystal structure from RCSB PDB
+2. Runs AutoDock Vina on both drugs — real binding pose search, real affinity scores
+3. Reads protein function using ProteinWhisper++ (GO term prediction, Fmax 0.4006, 7.9× over baseline)
+4. Encodes both drugs as 3D molecular graphs via GATv2
+5. Models drug-drug geometric complementarity via cross-drug attention
+6. Conditions predictions on GO function via FiLM modulation
+7. Adds cancer cell line context (60 NCI-60 cell lines, 9 cancer panels)
+8. Outputs a Loewe synergy score + renders both docked poses inside the protein in 3D
+
+---
+
+## Architecture
+
+![Architecture](architecture.png)
+
+---
 
 ## Results
 
-| Model | Pearson r | AUROC | Method |
-|-------|-----------|-------|--------|
-| **ProteinSynergyDock** | **0.5768** | **0.5408** | 3D docking + GO + cross-attn |
-| DrugSynergy3D (baseline) | 0.54 | 0.835 | SMILES + GNN, no docking |
-| Random | ~0.0 | 0.50 | — |
+| Metric | Value |
+|--------|-------|
+| Pearson r | 0.5768 |
+| AUROC | 0.5408 |
+| Training data | 107,103 real NCI ALMANAC measurements |
+| Drug pairs | 1,849 unique combinations |
+| Real docking | 842 AutoDock Vina runs across 20 cancer targets |
+| Cell lines | 60 NCI-60 cancer cell lines |
+| ProteinWhisper++ Fmax | 0.4006 (7.9× over ESM-2 baseline) |
 
-**ProteinWhisper++** (protein encoder): Fmax **0.4006** (7.9x improvement over baseline 0.0504)
+---
 
-## Architecture
-Drug A (SMILES) ──┐
+## Example predictions
 
-├── GATv2 Drug Encoder ──┐
+| Drug A | Drug B | PDB | Cell line | Known | Verdict |
+|--------|--------|-----|-----------|-------|---------|
+| Vemurafenib | Trametinib | 3OG7 | UACC-62 | 8.4 | ✅ Strongly synergistic |
+| Imatinib | Dasatinib | 2HYY | K-562 | -1.4 | ❌ Antagonistic |
+| Erlotinib | Lapatinib | 1IVO | A549/ATCC | 5.5 | ✅ Synergistic |
+| Olaparib | Rucaparib | 4DQY | OVCAR-3 | 2.1 | ⚠️ Mildly synergistic |
 
-Drug B (SMILES) ──┘                        ├── Cross-Drug Attention
+---
 
-│        +
+## Interpreting the score
 
-Protein Sequence ── ProteinWhisper++ ──────┤   FiLM Conditioning
+| Loewe score | Meaning |
+|-------------|---------|
+| > 4.0 | Strongly synergistic — drugs work much better together |
+| 2.0 – 4.0 | Mildly synergistic — modest combination benefit |
+| -1.0 – 2.0 | Approximately additive — independent effects |
+| < -1.0 | Antagonistic — drugs interfere with each other |
 
-(GO DAG decoder)       │
+---
 
-├── Synergy Head
+## Tech stack
 
-AutoDock Vina ── Binding Scores ───────────┘
+- Molecular docking: AutoDock Vina 1.2.7 + OpenBabel
+- Drug encoding: RDKit + PyTorch Geometric GATv2Conv
+- Protein function: ProteinWhisper++ (ESM-2 650M + GO DAG decoder, 38,245 GO terms)
+- Synergy model: Cross-drug attention GNN + FiLM conditioning + cell line embedding
+- Training data: NCI ALMANAC ComboDrugGrowth dataset
+- Visualization: py3Dmol (interactive 3D)
+- App: Streamlit
 
-↓
+---
 
-Synergy Score + Class
+## Related repositories
 
-## Key Innovations
-
-1. **Cross-drug geometric attention** — first model to explicitly model Drug A / Drug B geometric relationships inside a shared protein pocket
-2. **GO-conditioned synergy** — protein function embeddings from ProteinWhisper++ injected via FiLM conditioning
-3. **Real docking integration** — AutoDock Vina binding affinities as structural features
-4. **Dark target capability** — works on unannotated proteins with no prior drug data
-
-## Data
-
-- **NCI ALMANAC** — 231 real drug combination synergy scores
-- **SwissProt** — 109,720 proteins for ProteinWhisper++ training
-- **RCSB PDB** — 19 cancer target crystal structures
-- **Gene Ontology** — 38,245 GO terms, 57,824 DAG edges
-
-## Installation
-
-```bash
-git clone https://github.com/Aprameya05/ProteinSynergyDock.git
-cd ProteinSynergyDock
-pip install -r requirements.txt
-```
-
-## Related Projects
-
-- [ProteinWhisper](https://github.com/Aprameya05/ProteinWhisper) — zero-shot protein function annotation
-- [DrugSynergy3D](https://github.com/Aprameya05/DrugSynergy3D) — SE(3) equivariant drug synergy prediction
+- [ProteinSynergyDock-App](https://github.com/Aprameya05/ProteinSynergyDock-App) — Streamlit demo with real-time docking
+- [ProteinWhisper](https://github.com/Aprameya05/ProteinWhisper) — protein function encoder for the dark proteome
+- [DrugSynergy3D](https://github.com/Aprameya05/DrugSynergy3D) — SE(3) equivariant GNN for drug synergy
