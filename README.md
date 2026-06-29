@@ -6,7 +6,7 @@
 
 ---
 
-![Docking visualization](demo.png.png)
+![Docking visualization](demo.png)
 
 *Vemurafenib (cyan) and Trametinib (orange) docked inside BRAF kinase (PDB: 3OG7). FDA-approved combination for BRAF V600E melanoma.*
 
